@@ -1,0 +1,116 @@
+#setup default zone
+gcloud config set compute/zone us-east1-b
+
+#Task 1: Create a project jumphost instance
+#Name the instance nucleus-jumphost.
+#Use an f1-micro machine type.
+#Use the default image type (Debian Linux).
+gcloud compute instances create nucleus-server --machine-type f1-micro
+
+#Task 2: Create a Kubernetes service cluster
+#Create a cluster (in the us-east1-b zone) to host the service.
+gcloud container clusters create nucleus-cluster
+
+#setup kubectl credentials
+gcloud container clusters get-credentials nucleus-cluster
+
+#Use the Docker container hello-app (gcr.io/google-samples/hello-app:2.0) as a place holder; the team will replace the container with their own work later.
+kubectl create deployment nucleus-server --image=gcr.io/google-samples/hello-app:2.0
+
+#Expose the app on port 8080
+kubectl expose deployment nucleus-server --type=LoadBalancer --port 8080
+
+
+#Task 3: Set up an HTTP load balancer
+
+#create setup.sh script
+cat << EOF > startup.sh
+#! /bin/bash
+apt-get update
+apt-get install -y nginx
+service nginx start
+sed -i -- 's/nginx/Google Cloud Platform - '"\$HOSTNAME"'/' /var/www/html/index.nginx-debian.html
+EOF
+
+#create instance template
+gcloud compute instance-templates create nucleus-lb-backend-template \
+   --region=us-east1 \
+   --network=default \
+   --subnet=default \
+   --tags=allow-health-check \
+   --machine-type f1-micro \
+   --image-family=debian-9 \
+   --image-project=debian-cloud \
+   --metadata=startup-script=setup.sh
+
+#create instance group
+gcloud compute instance-groups managed create nucleus-nginx-group \
+         --size 2 \
+         --template nucleus-lb-backend-template
+
+
+         --target-pool nucleus-nginx-pool
+
+#create named port
+gcloud compute instance-groups set-named-ports nucleus-nginx-group --named-ports http:80 --zone us-east1-b
+
+#create firewall rule
+gcloud compute firewall-rules create fw-allow-health-check \
+    --network=default \
+    --action=allow \
+    --direction=ingress \
+    --source-ranges=130.211.0.0/22,35.191.0.0/16 \
+    --target-tags=allow-health-check \
+    --rules=tcp:80
+
+#create static ip
+gcloud compute addresses create lb-ipv4-1 \
+    --ip-version=IPV4 \
+    --global
+
+#create health check
+gcloud compute health-checks create http http-basic-check \
+        --port 80
+
+#create backend service
+gcloud compute backend-services create web-backend-service \
+        --protocol=HTTP \
+        --port-name=http \
+        --health-checks=http-basic-check \
+        --global
+
+#add instance group to backend service
+gcloud compute backend-services add-backend web-backend-service \
+        --instance-group=nucleus-nginx-group \
+        --instance-group-zone=us-east1-b \
+        --global
+
+#create url map to map requests to backend service
+gcloud compute url-maps create web-map-http \
+        --default-service web-backend-service
+
+#create target http proxy
+gcloud compute target-http-proxies create http-lb-proxy \
+        --url-map web-map-http
+
+#create global forwarding rule
+gcloud compute forwarding-rules create http-content-rule \
+        --address=lb-ipv4-1\
+        --global \
+        --target-http-proxy=http-lb-proxy \
+        --ports=80
+
+
+
+apt-get update
+sudo apt-get install -y nginx
+sudo service nginx start
+sudo sed -i -- 's/nginx/Google Cloud Platform - '"\$HOSTNAME"'/' /var/www/html/index.nginx-debian.html
+
+
+#create target pool
+gcloud compute target-pools create nucleus-nginx-pool --region=us-east1
+
+
+
+
