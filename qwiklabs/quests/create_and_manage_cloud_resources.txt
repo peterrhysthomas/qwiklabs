@@ -24,12 +24,12 @@ kubectl expose deployment nucleus-server --type=LoadBalancer --port 8080
 #Task 3: Set up an HTTP load balancer
 
 #create setup.sh script
-cat << EOF > startup.sh
+cat << EOF > setup.sh
 #! /bin/bash
-apt-get update
-apt-get install -y nginx
-service nginx start
-sed -i -- 's/nginx/Google Cloud Platform - '"\$HOSTNAME"'/' /var/www/html/index.nginx-debian.html
+sudo apt-get update
+sudo apt-get install -y nginx
+sudo service nginx start
+sudo sed -i -- 's/nginx/Google Cloud Platform - '"\$HOSTNAME"'/' /var/www/html/index.nginx-debian.html
 EOF
 
 #create instance template
@@ -41,14 +41,15 @@ gcloud compute instance-templates create nucleus-lb-backend-template \
    --machine-type f1-micro \
    --image-family=debian-9 \
    --image-project=debian-cloud \
-   --metadata=startup-script=setup.sh
+   --metadata-from-file startup-script=setup.sh
+
+#create target pool
+gcloud compute target-pools create nucleus-nginx-pool --region=us-east1
 
 #create instance group
 gcloud compute instance-groups managed create nucleus-nginx-group \
          --size 2 \
-         --template nucleus-lb-backend-template
-
-
+         --template nucleus-lb-backend-template \
          --target-pool nucleus-nginx-pool
 
 #create named port
@@ -108,8 +109,7 @@ sudo service nginx start
 sudo sed -i -- 's/nginx/Google Cloud Platform - '"\$HOSTNAME"'/' /var/www/html/index.nginx-debian.html
 
 
-#create target pool
-gcloud compute target-pools create nucleus-nginx-pool --region=us-east1
+
 
 
 
