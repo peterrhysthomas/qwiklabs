@@ -43,14 +43,10 @@ gcloud compute instance-templates create nucleus-lb-backend-template \
    --image-project=debian-cloud \
    --metadata-from-file startup-script=setup.sh
 
-#create target pool
-gcloud compute target-pools create nucleus-nginx-pool --region=us-east1
-
 #create instance group
 gcloud compute instance-groups managed create nucleus-nginx-group \
          --size 2 \
-         --template nucleus-lb-backend-template \
-         --target-pool nucleus-nginx-pool
+         --template nucleus-lb-backend-template
 
 #create named port
 gcloud compute instance-groups set-named-ports nucleus-nginx-group --named-ports http:80 --zone us-east1-b
